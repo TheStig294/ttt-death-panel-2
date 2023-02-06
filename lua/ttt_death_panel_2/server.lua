@@ -728,6 +728,7 @@ hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(vict
 
     if traceres then
         local hitbox = hitboxes[traceres.HitBox + 1]
+        if not hitbox then return end
 
         local hitinfo = {hitbox[2], hitbox[1] - 1, traceres.HitPos, traceres.HitBox, traceres.HitGroup,}
 
