@@ -143,7 +143,7 @@ local function playerdeath(victim, attacker, killinfo)
 
     if role > 0 then
         WriteUIntClamped(attacker.dp2_killstreak, 8)
-        net.WriteBool(CR_VERSION and attacker:IsDetectiveLike())
+        net.WriteBool(attacker.GetRoleTeam and attacker:GetRoleTeam() == ROLE_TEAM_DETECTIVE)
     end
 
     if botdebug and victim:IsBot() then return net.Broadcast() end

@@ -342,7 +342,7 @@ local function removepanel(_, pnl)
     end
 end
 
-local function DeathPanel(ply, role, hits, totaldmg, cause, causer, killstreak, hitbox, detectiveLike)
+local function DeathPanel(ply, role, hits, totaldmg, cause, causer, killstreak, hitbox, detectiveTeam)
     if definefonts then
         definefonts()
         definefonts = nil
@@ -383,7 +383,7 @@ local function DeathPanel(ply, role, hits, totaldmg, cause, causer, killstreak, 
     if not CR_VERSION then
         rolecol = ({Color(32, 180, 16), Color(192, 40, 32), Color(16, 96, 192), Color(136, 152, 16),})[role] or yellow
     else
-        if detectiveLike and not (role - 1 == ROLE_IMPERSONATOR or role - 1 == ROLE_DEPUTY) then
+        if detectiveTeam then
             rolecol = COLOR_DETECTIVE["simple"]
         elseif INNOCENT_ROLES[role - 1] then
             rolecol = COLOR_INNOCENT["simple"]
@@ -559,7 +559,7 @@ net.Receive("ttt_death_panel", function()
 
     local causer = net.ReadBool() and net.ReadUInt(8) or net.ReadString()
     local killstreak = role > 0 and net.ReadUInt(8) or 0
-    local detectiveLike = net.ReadBool()
+    local detectiveTeam = net.ReadBool()
 
     if causer == 0 or causer == "" then
         causer = nil
@@ -581,5 +581,5 @@ net.Receive("ttt_death_panel", function()
         causer = trans ~= name and trans or language.GetPhrase(name)
     end
 
-    return DeathPanel(Entity(role > 0 and idx or 0), role, hits, totaldmg, cause, causer, killstreak, hitbox, detectiveLike)
+    return DeathPanel(Entity(role > 0 and idx or 0), role, hits, totaldmg, cause, causer, killstreak, hitbox, detectiveTeam)
 end)
