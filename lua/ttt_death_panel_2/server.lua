@@ -1,6 +1,9 @@
 CreateConVar("ttt_death_panel_damage_taken", "0", {FCVAR_ARCHIVE, FCVAR_NOTIFY}, "Whether the amount of damage taken on death is shown", 0, 1)
 
 SetGlobalBool("ttt_death_panel_damage_taken", GetConVar("ttt_death_panel_damage_taken"):GetBool())
+
+local hideRoleCvar = CreateConVar("ttt_death_panel_hide_role", "0", {FCVAR_ARCHIVE, FCVAR_NOTIFY}, "Whether the role of a player's killer should be hidden", 0, 1)
+
 local botdebug = false -- for testing purposes only
 util.AddNetworkString("ttt_death_panel")
 
@@ -61,10 +64,11 @@ local function playerdeath(victim, attacker, killinfo)
     local hitter = attacker
     -- Looks weird but basically we have to initialise the player's role to ROLE_NONE, and check if their role was ROLE_NONE to start with,
     -- in which case their role is meant to be hidden
-    local hiddenRole = false
+    local hiddenRole = hideRoleCvar:GetBool()
     local role = ROLE_NONE
 
-    if CR_VERSION then
+    -- Don't bother with checking if we should hide a player's role if the hidden role convar is already on, or Custom Roles is not installed
+    if CR_VERSION and not hiddenRole then
         local reason = "nil"
         local killerName = "nil"
 
