@@ -1,6 +1,9 @@
 # TTT Death Panel
 Fork of Jane's killer info popup for Gmod TTT, made to be compatible with Custom Roles for TTT. Below is their original README contents.
 
+## Steam Workshop Link
+https://steamcommunity.com/sharedfiles/filedetails/?id=2609895340
+
 ## ttt death panel 2
 
 shows killer info on death with verbose (and overengineered) death messages like:\
