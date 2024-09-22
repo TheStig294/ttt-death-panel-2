@@ -444,8 +444,6 @@ local function DeathPanel(ply, role, hits, totaldmg, cause, causer, killstreak, 
         lbl_role:SetSize(lbl_role_w, lbl_role_h * 2)
         width = math.max(width, av_w + lbl_role_w + pad * 3)
         height = height + av_h + pad
-    else
-        print(causestr)
     end
 
     local dpanel_bg = vgui.Create("DPanel", bg)
