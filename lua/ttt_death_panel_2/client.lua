@@ -2,119 +2,32 @@ local delay_time = 0
 local fadein_time = 0.5
 local display_time = 5
 local fadeout_time = 2.5
-
 local bottom_align = 80
 
 local killmsgs = {
-	_hitboxes = {
-		" in the head",
-		" in the face",
-		" in the neck",
-		" in the pelvis",
-		" in the crotch",
-		" in the ass",
-		" in the chest",
-		" in the back",
-		" in the upper arm",
-		" in the forearm",
-		" in the hand",
-		" in the thigh",
-		" in the calf",
-		" in the foot",
-		" in the torso",
-		" in the arm",
-		" in the leg",
-	},
-
-	shot = {
-		"You were shot%s",
-	},
-
-	slash = {
-		"You were stabbed%s",
-	},
-	slash_world = {
-		"You were slashed to death%s",
-	},
-
-	proj = {
-		"You caught %s%s from",
-	},
-	proj_world = {
-		"You caught %s%s",
-	},
-
-	club = {
-		"You were clubbed to death%s",
-		"You were beaten to death%s",
-		"You were clobbered to death%s",
-		"You were bludgeoned to death%s",
-		"You were walloped to death%s",
-		"You were bashed to death%s",
-	},
-
-	burn = {
-		"You were burnt to a crisp%s",
-		"You were incinerated%s",
-		"You were torched%s",
-		"You were fried%s",
-		"You were roasted%s",
-		"You were toasted%s",
-	},
-
-	boom = {
-		"You were blown up%s",
-	},
-
-	drown = {
-		"You were drowned%s",
-	},
-	drown_nocauser = {
-		"You drowned",
-	},
-
-	tele = {
-		"You were telefragged%s",
-	},
-
-	crush = {
-		"You were crushed%s",
-	},
-
-	push = {
-		"You were pushed%s",
-	},
-	push_nocauser = {
-		"You were pushed to your death%s",
-	},
-
-	fall = {
-		"You fell after being pushed%s",
-	},
-	fall_short = {
-		"You broke your legs after being pushed%s",
-	},
-	fall_nocauser = {
-		"You fell to your death",
-	},
-	fall_short_nocauser = {
-		"You broke your legs",
-	},
-
-	stomp = {
-		"You were stomped on by a falling",
-		"You were crushed by the weight of",
-		"Your head was landed on by",
-	},
-	stomp_world = {
-		"You were stomped on",
-	},
-	other = {
-		"You were killed%s",
-	},
-	other_nocauser = {
-		"You died",
-	},
+	_hitboxes = {" in the head", " in the face", " in the neck", " in the pelvis", " in the crotch", " in the ass", " in the chest", " in the back", " in the upper arm", " in the forearm", " in the hand", " in the thigh", " in the calf", " in the foot", " in the torso", " in the arm", " in the leg",},
+	shot = {"You were shot%s",},
+	slash = {"You were stabbed%s",},
+	slash_world = {"You were slashed to death%s",},
+	proj = {"You caught %s%s from",},
+	proj_world = {"You caught %s%s",},
+	club = {"You were clubbed to death%s", "You were beaten to death%s", "You were clobbered to death%s", "You were bludgeoned to death%s", "You were walloped to death%s", "You were bashed to death%s",},
+	burn = {"You were burnt to a crisp%s", "You were incinerated%s", "You were torched%s", "You were fried%s", "You were roasted%s", "You were toasted%s",},
+	boom = {"You were blown up%s",},
+	drown = {"You were drowned%s",},
+	drown_nocauser = {"You drowned",},
+	tele = {"You were telefragged%s",},
+	crush = {"You were crushed%s",},
+	push = {"You were pushed%s",},
+	push_nocauser = {"You were pushed to your death%s",},
+	fall = {"You fell after being pushed%s",},
+	fall_short = {"You broke your legs after being pushed%s",},
+	fall_nocauser = {"You fell to your death",},
+	fall_short_nocauser = {"You broke your legs",},
+	stomp = {"You were stomped on by a falling", "You were crushed by the weight of", "Your head was landed on by",},
+	stomp_world = {"You were stomped on",},
+	other = {"You were killed%s",},
+	other_nocauser = {"You died",},
 }
 
 local causeroverride = {
@@ -265,7 +178,6 @@ local consonantsound = {
 
 local vowelsound = {
 	["11"] = true,
-
 	heir = true,
 	heirdom = true,
 	heirless = true,
@@ -408,22 +320,17 @@ local function definefonts()
 	}
 
 	surface.CreateFont("dp2_BebasNeue_28", fontdata)
-
 	fontdata.size = 48
 	surface.CreateFont("dp2_BebasNeue_48", fontdata)
-
 	fontdata.size = 80
 	surface.CreateFont("dp2_BebasNeue_80", fontdata)
-
-	fontdata.font =
-		system.IsLinux() and "DejaVu Sans"
-		or system.IsOSX() and "Helvetica"
-		or "Tahoma"
+	fontdata.font = system.IsLinux() and "DejaVu Sans" or system.IsOSX() and "Helvetica" or "Tahoma"
 	fontdata.size = 16
 	surface.CreateFont("dp2_Tahoma_16", fontdata)
 end
 
 local panel_existing
+
 local function removepanel(_, pnl)
 	if IsValid(pnl) then
 		pnl:Remove()
@@ -434,7 +341,7 @@ local function removepanel(_, pnl)
 	end
 end
 
-local function DeathPanel(ply, role, hits, totaldmg, cause, causer, killstreak, hitbox)
+local function DeathPanel(ply, role, hits, totaldmg, cause, causer, killstreak, hitbox, detectiveTeam)
 	if definefonts then
 		definefonts()
 		definefonts = nil
@@ -450,212 +357,155 @@ local function DeathPanel(ply, role, hits, totaldmg, cause, causer, killstreak, 
 	end
 
 	local width, height = 0, 0
-
 	local panel = vgui.Create("Panel")
-
 	local bg = vgui.Create("Panel", panel)
-
-	local causestr = role == 0 and (
-			killmsgs[cause .. "_world"]
-			or not causer and killmsgs[cause .. "_nocauser"]
-		) or killmsgs[cause]
+	local causestr = role == 0 and (killmsgs[cause .. "_world"] or not causer and killmsgs[cause .. "_nocauser"]) or killmsgs[cause]
 	causestr = causestr[math.random(#causestr)]
-
 	local art
+
 	if causer then
 		local causerl = causer and causer:lower()
 		local firstword = causerl and causerl:match("^%S+")
-
-		art = not firstword and "a "
-			or indefwords[firstword] and ""
-			or consonantsound[firstword] and "a "
-			or vowelsound[firstword] and "an "
-			or causer:find("^[FHLMNRSX][^AEIOU%l]") and "an "
-			or causer:find("^[U]%L") and "a "
-			or causer:find("^[Ee]u") and "a "
-			or causer:find("^[Uu][bcfklrstv][aeiou]") and "a "
-			or causer:find("^[Uu]ni[^mn]") and "a "
-			or causerl:find("^[aeiou]") and "an "
-			or "a "
+		art = not firstword and "a " or indefwords[firstword] and "" or consonantsound[firstword] and "a " or vowelsound[firstword] and "an " or causer:find("^[FHLMNRSX][^AEIOU%l]") and "an " or causer:find("^[U]%L") and "a " or causer:find("^[Ee]u") and "a " or causer:find("^[Uu][bcfklrstv][aeiou]") and "a " or causer:find("^[Uu]ni[^mn]") and "a " or causerl:find("^[aeiou]") and "an " or "a "
 	end
 
 	if cause:sub(1, 4) == "proj" then
-		causestr = causestr:format(
-				art or "a ",
-				causer or "projectile"
-			)
+		causestr = causestr:format(art or "a ", causer or "projectile")
 	else
-		causestr = causestr:format(
-				(hitbox and killmsgs._hitboxes[hitbox] or "")
-				.. (causer and (" %s %s%s"):format(
-						role > 0 and "with" or "by", art, causer
-					) or "")
-				.. (role > 0 and " by" or "")
-			)
+		causestr = causestr:format((hitbox and killmsgs._hitboxes[hitbox] or "") .. (causer and (" %s %s%s"):format(role > 0 and "with" or "by", art, causer) or "") .. (role > 0 and " by" or ""))
 	end
 
 	local grey = Color(240, 232, 224)
 	local yellow = Color(224, 180, 16)
-	local rolecol = ({
-		Color(32, 180, 16),
-		Color(192, 40, 32),
-		Color(16, 96, 192),
-		Color(136, 152, 16),
-	})[role] or yellow
+	local rolecol = yellow
+
+	if not CR_VERSION then
+		rolecol = ({Color(32, 180, 16), Color(192, 40, 32), Color(16, 96, 192), Color(136, 152, 16),})[role] or yellow
+	else
+		if detectiveTeam then
+			rolecol = COLOR_DETECTIVE["simple"]
+		elseif INNOCENT_ROLES[role - 1] then
+			rolecol = COLOR_INNOCENT["simple"]
+		elseif TRAITOR_ROLES[role - 1] then
+			rolecol = COLOR_TRAITOR["simple"]
+		elseif JESTER_ROLES[role - 1] then
+			rolecol = COLOR_JESTER["simple"]
+		elseif INDEPENDENT_ROLES[role - 1] then
+			rolecol = COLOR_INDEPENDENT["simple"]
+		elseif MONSTER_ROLES[role - 1] then
+			rolecol = COLOR_MONSTER["simple"]
+		end
+	end
 
 	local pad = 8
-
 	local lbl_cause = vgui.Create("DLabel", panel)
 	lbl_cause:SetFont(role > 0 and "dp2_BebasNeue_28" or "dp2_BebasNeue_48")
 	lbl_cause:SetText(causestr)
 	lbl_cause:SetTextColor(grey)
-
 	local lbl_cause_w = lbl_cause:GetContentSize()
 	local lbl_cause_h = role > 0 and 18 or 32
 	lbl_cause:SetPos(pad, pad - lbl_cause_h * 0.5)
 	lbl_cause:SetSize(lbl_cause_w, lbl_cause_h * 2)
-
 	width = math.max(width, lbl_cause_w + pad * 2)
 	height = height + lbl_cause_h + pad * 2
 
 	if role > 0 then
 		local av_w, av_h = 92, 92
-
 		local av = vgui.Create("AvatarImage", panel)
 		av:SetPos(pad, height)
 		av:SetSize(av_w, av_h)
 		av:SetPlayer(ply, 184)
-
 		local nick = ply:Nick()
-
 		local lbl_nick = vgui.Create("DLabel", panel)
 		lbl_nick:SetFont("dp2_BebasNeue_48")
 		lbl_nick:SetText(nick)
 		lbl_nick:SetTextColor(yellow)
-
 		local lbl_nick_w = lbl_nick:GetContentSize()
 		local lbl_nick_h = 32
 		lbl_nick:SetPos(av_w + pad * 2, height - lbl_nick_h * 0.5)
 		lbl_nick:SetSize(lbl_nick_w, lbl_nick_h * 2)
-
 		width = math.max(width, av_w + lbl_nick_w + pad * 3)
+		local rolename = "A mysterious person"
 
-		local rolename = LANG.TryTranslation(
-			({"innocent", "traitor", "detective", "Spectator"})[role]
-		)
+		if not CR_VERSION then
+			rolename = LANG.TryTranslation(({"innocent", "traitor", "detective", "Spectator"})[role])
+		else
+			rolename = ROLE_STRINGS[role - 1]
+		end
 
 		local lbl_role = vgui.Create("DLabel", panel)
 		lbl_role:SetFont("dp2_BebasNeue_80")
 		lbl_role:SetText(rolename)
 		lbl_role:SetTextColor(rolecol)
-
 		local lbl_role_w = lbl_role:GetContentSize()
 		local lbl_role_h = 50
 		lbl_role:SetPos(av_w + pad * 2, height + av_h - lbl_role_h * 1.5)
 		lbl_role:SetSize(lbl_role_w, lbl_role_h * 2)
-
 		width = math.max(width, av_w + lbl_role_w + pad * 3)
-
 		height = height + av_h + pad
-
-		print(("%s %s (%s)"):format(causestr, nick, rolename))
-	else
-		print(causestr)
 	end
 
 	local dpanel_bg = vgui.Create("DPanel", bg)
 	dpanel_bg:SetBackgroundColor(Color(0, 0, 10, 200))
-
-	local drawhits = hits > 0
-	local drawks = killstreak > 1
+	local drawhits = GetGlobalBool("ttt_death_panel_damage_taken") and hits > 0
+	local drawks = false
 
 	if drawhits or drawks then
 		local bg2 = vgui.Create("Panel", panel)
 		bg2:SetPos(0, height)
-
 		local dpanel_bg2 = vgui.Create("DPanel", bg2)
 		dpanel_bg2:SetPos(0, -2)
 		dpanel_bg2:SetBackgroundColor(Color(0, 0, 10, 232))
-
 		local x = pad
 		local lbl, lbl_w, lbl_h
 
 		if drawhits then
-			for _, v in pairs({
-				"Damage taken: ",
-				totaldmg,
-				" in ",
-				hits,
-				hits == 1 and " hit " or " hits ",
-			}) do
+			for _, v in pairs({"Damage taken: ", totaldmg, " in ", hits, hits == 1 and " hit " or " hits ",}) do
 				lbl = vgui.Create("DLabel", bg2)
 				lbl:SetFont("dp2_Tahoma_16")
 				lbl:SetText(v)
 				lbl:SetTextColor(isnumber(v) and rolecol or grey)
-
 				lbl_w, lbl_h = lbl:GetContentSize()
 				lbl_h = lbl_h * 0.5
 				lbl:SetPos(x, pad - lbl_h * 0.5)
 				lbl:SetSize(lbl_w, lbl_h * 2)
-
 				x = x + lbl_w
 			end
 		end
 
 		if drawks then
 			local lbl_ksnum_w, lbl_kstxt_w
-
 			local lbl_ksnum = vgui.Create("DLabel", bg2)
 			lbl_ksnum:SetFont("dp2_Tahoma_16")
 			lbl_ksnum:SetText(killstreak)
 			lbl_ksnum:SetTextColor(yellow)
-
 			lbl_ksnum_w, lbl_h = lbl_ksnum:GetContentSize()
 			lbl_h = lbl_h * 0.5
 			lbl_ksnum:SetSize(lbl_ksnum_w, lbl_h * 2)
-
 			local lbl_kstxt = vgui.Create("DLabel", bg2)
 			lbl_kstxt:SetFont("dp2_Tahoma_16")
 			lbl_kstxt:SetText(" killstreak")
 			lbl_kstxt:SetTextColor(grey)
-
 			lbl_kstxt_w, lbl_h = lbl_kstxt:GetContentSize()
 			lbl_h = lbl_h * 0.5
 			lbl_kstxt:SetSize(lbl_kstxt_w, lbl_h * 2)
 
 			if drawhits then
-				x = math.max(
-					width - pad,
-					x + 32 + lbl_ksnum_w + lbl_kstxt_w
-				)
-
-				lbl_ksnum:SetPos(
-					x - lbl_kstxt_w - lbl_ksnum_w,
-					pad - lbl_h * 0.5
-				)
-
-				lbl_kstxt:SetPos(
-					x - lbl_kstxt_w,
-					pad - lbl_h * 0.5
-				)
+				x = math.max(width - pad, x + 32 + lbl_ksnum_w + lbl_kstxt_w)
+				lbl_ksnum:SetPos(x - lbl_kstxt_w - lbl_ksnum_w, pad - lbl_h * 0.5)
+				lbl_kstxt:SetPos(x - lbl_kstxt_w, pad - lbl_h * 0.5)
 			else
 				lbl_ksnum:SetPos(x, pad - lbl_h * 0.5)
-
 				x = x + lbl_ksnum_w
-
 				lbl_kstxt:SetPos(x, pad - lbl_h * 0.5)
-
 				x = x + lbl_kstxt_w
 			end
 		end
 
 		width = math.max(width, x + pad)
-
 		bg:SetSize(width, height)
 		dpanel_bg:SetSize(width, height + 2)
-
 		height = height + lbl_h + pad * 2
-
 		bg2:SetSize(width, lbl_h + pad * 2)
 		dpanel_bg2:SetSize(width, lbl_h + pad * 2 + 2)
 	else
@@ -666,67 +516,47 @@ local function DeathPanel(ply, role, hits, totaldmg, cause, causer, killstreak, 
 	panel:SetSize(width, height)
 	panel:CenterHorizontal()
 	panel:AlignBottom(bottom_align)
-
 	local x, y = panel:GetPos()
 	panel:AlignBottom(-height)
 	panel:MoveTo(x, y, fadein_time, delay_time, 0.3)
-
 	panel:AlphaTo(0, fadeout_time, delay_time + fadein_time + display_time, removepanel)
-
 	local pnl_ex = panel_existing
 	panel_existing = panel
 
-	if IsValid(pnl_ex) then -- not sure why this would happen in a normal game, but just in case
+	-- not sure why this would happen in a normal game, but just in case
+	if IsValid(pnl_ex) then
 		panel.panel_existing = pnl_ex
-
 		local to_y = y
 
 		while IsValid(pnl_ex) do
 			local ex = pnl_ex:GetPos()
 			local _, eh = pnl_ex:GetSize()
-
 			pnl_ex:Stop()
 			pnl_ex:AlphaTo(0, fadeout_time, 0, removepanel)
 			pnl_ex:MoveTo(ex, to_y - eh - pad, fadein_time * 1.1, delay_time, 0.3)
-
 			pnl_ex = pnl_ex.panel_existing
 			to_y = to_y - eh - pad
 		end
 	end
 end
 
-local cause2str = {
-	"other",
-	"push",
-	"fall",
-	"fall_short",
-	"shot",
-	"drown",
-	"boom",
-	"burn",
-	"proj",
-	"club",
-	"slash",
-	"tele",
-	"stomp",
-	"crush",
-}
+local cause2str = {"other", "push", "fall", "fall_short", "shot", "drown", "boom", "burn", "proj", "club", "slash", "tele", "stomp", "crush",}
 
 net.Receive("ttt_death_panel", function()
 	local idx = net.ReadUInt(math.ceil(math.log(game.MaxPlayers()) / math.log(2))) + 1
-	local role = net.ReadUInt(2)
+	local role = net.ReadUInt(8)
 	local hits = net.ReadUInt(8)
 	local totaldmg = net.ReadUInt(16)
 	local cause = cause2str[net.ReadUInt(4) + 1]
-
 	local hitbox
+
 	if cause == "shot" then
 		hitbox = net.ReadUInt(5)
 	end
 
 	local causer = net.ReadBool() and net.ReadUInt(8) or net.ReadString()
-
 	local killstreak = role > 0 and net.ReadUInt(8) or 0
+	local detectiveTeam = net.ReadBool()
 
 	if causer == 0 or causer == "" then
 		causer = nil
@@ -744,17 +574,9 @@ net.Receive("ttt_death_panel", function()
 		end
 
 		local name = wname or causer
-
 		local trans = LANG.TryTranslation(name)
-
 		causer = trans ~= name and trans or language.GetPhrase(name)
 	end
 
-	return DeathPanel(
-		Entity(role > 0 and idx or 0), role,
-		hits, totaldmg,
-		cause, causer,
-		killstreak,
-		hitbox
-	)
+	return DeathPanel(Entity(role > 0 and idx or 0), role, hits, totaldmg, cause, causer, killstreak, hitbox, detectiveTeam)
 end)

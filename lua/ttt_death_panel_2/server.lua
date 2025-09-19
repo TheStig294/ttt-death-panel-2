@@ -1,15 +1,17 @@
-local botdebug = false -- for testing purposes only
+CreateConVar("ttt_death_panel_damage_taken", "0", {FCVAR_ARCHIVE, FCVAR_NOTIFY}, "Whether the amount of damage taken on death is shown", 0, 1)
 
+SetGlobalBool("ttt_death_panel_damage_taken", GetConVar("ttt_death_panel_damage_taken"):GetBool())
+
+local hideRoleCvar = CreateConVar("ttt_death_panel_hide_role", "0", {FCVAR_ARCHIVE, FCVAR_NOTIFY}, "Whether the role of a player's killer should be hidden", 0, 1)
+
+local botdebug = false -- for testing purposes only
 util.AddNetworkString("ttt_death_panel")
 
 local function getdeathcause(killinfo, attacker)
 	local dmgtype = killinfo.type
-
-	if not dmgtype then
-		return
-	end
-
+	if not dmgtype then return end
 	local band = bit.band
+
 	local function is_dmg(x)
 		return band(dmgtype, x) > 0
 	end
@@ -60,13 +62,51 @@ end
 
 local function playerdeath(victim, attacker, killinfo)
 	local hitter = attacker
-	local role = 0
+	-- Looks weird but basically we have to initialise the player's role to ROLE_NONE, and check if their role was ROLE_NONE to start with,
+	-- in which case their role is meant to be hidden
+	local hiddenRole = hideRoleCvar:GetBool()
+	local role = ROLE_NONE
+
+	-- Don't bother with checking if we should hide a player's role if the hidden role convar is already on, or Custom Roles is not installed
+	if CR_VERSION and not hiddenRole then
+		local reason = "nil"
+		local killerName = "nil"
+
+		if victim.DiedByWater then
+			reason = "water"
+		elseif attacker == victim then
+			reason = "suicide"
+		elseif IsValid(killinfo.inflictor) then
+			if victim:IsPlayer() and (string.StartWith(killinfo.inflictor:GetClass(), "prop_physics") or killinfo.inflictor:GetClass() == "prop_dynamic") then
+				-- If the killer is also a prop
+				reason = "prop"
+			elseif IsValid(attacker) then
+				if killinfo.inflictor:GetClass() == "entityflame" and attacker:GetClass() == "entityflame" then
+					reason = "burned"
+				elseif killinfo.inflictor:GetClass() == "worldspawn" and attacker:GetClass() == "worldspawn" then
+					reason = "fell"
+				elseif attacker:IsPlayer() and victim ~= attacker then
+					reason = "ply"
+					killerName = attacker:Nick()
+					role = attacker:GetRole()
+				end
+			end
+		end
+
+		local _, _, processedKillerRole = hook.Call("TTTDeathNotifyOverride", nil, victim, killinfo.inflictor, attacker, reason, killerName, role)
+
+		if processedKillerRole == ROLE_NONE then
+			hiddenRole = true
+		end
+	end
+
 	if IsValid(attacker) and attacker:IsPlayer() then
-		role = (
-			attacker.GetBaseRole
-			and attacker:GetBaseRole()
-			or attacker:GetRole()
-		) + 1
+		role = (attacker.GetBaseRole and attacker:GetBaseRole() or (CR_VERSION and attacker:GetRole()) or attacker:GetRole()) + 1
+
+		-- If the role started as hidden, don't reveal the player's role
+		if hiddenRole then
+			role = ROLE_NONE
+		end
 	else
 		attacker = Entity(0)
 		hitter = killinfo.type
@@ -78,25 +118,19 @@ local function playerdeath(victim, attacker, killinfo)
 
 	local hits, totaldmg
 	local _hits = victim.dp2_hits and victim.dp2_hits[hitter]
+
 	if _hits then
 		victim.dp2_hits = nil
-
 		hits = _hits[1]
 		totaldmg = math.floor(_hits[2] + 0.5)
 	end
 
 	local cause, causer = getdeathcause(killinfo, attacker)
-
 	net.Start("ttt_death_panel")
-	WriteUIntClamped(
-		role > 0 and attacker:EntIndex() - 1,
-		math.ceil(math.log(game.MaxPlayers()) / math.log(2))
-	)
-	WriteUIntClamped(role, 2)
-
+	WriteUIntClamped(role > 0 and attacker:EntIndex() - 1, math.ceil(math.log(game.MaxPlayers()) / math.log(2)))
+	WriteUIntClamped(role, 8)
 	WriteUIntClamped(hits, 8)
 	WriteUIntClamped(totaldmg, 16)
-
 	WriteUIntClamped(cause, 4)
 
 	if cause == 4 then
@@ -113,27 +147,20 @@ local function playerdeath(victim, attacker, killinfo)
 
 	if role > 0 then
 		WriteUIntClamped(attacker.dp2_killstreak, 8)
+		net.WriteBool(attacker.GetRoleTeam and attacker:GetRoleTeam() == ROLE_TEAM_DETECTIVE)
 	end
 
-	if botdebug and victim:IsBot() then
-		return net.Broadcast()
-	end
+	if botdebug and victim:IsBot() then return net.Broadcast() end
 
 	return net.Send(victim)
 end
 
 hook.Add("PlayerDeath", "ttt_death_panel_PlayerDeath", function(victim, inflictor, attacker)
-	if GetRoundState() ~= ROUND_ACTIVE then
-		return
-	end
-
+	if GetRoundState() ~= ROUND_ACTIVE then return end
 	local prevks
-	if IsValid(attacker)
-		and attacker:IsPlayer()
-		and attacker ~= victim
-	then
-		prevks = attacker.dp2_killstreak or 0
 
+	if IsValid(attacker) and attacker:IsPlayer() and attacker ~= victim then
+		prevks = attacker.dp2_killstreak or 0
 		attacker.dp2_killstreak = prevks + 1
 	end
 
@@ -144,18 +171,12 @@ hook.Add("PlayerDeath", "ttt_death_panel_PlayerDeath", function(victim, inflicto
 
 	victim.dp2_killinfo = killinfo
 
-	timer.Simple(0, function() -- wait for PostEntityTakeDamage to be called
-		if not killinfo then
-			return -- ???
-		end
-
+	-- wait for PostEntityTakeDamage to be called
+	timer.Simple(0, function()
+		if not killinfo then return end -- ???
 		local attacker2 = killinfo.attacker
 
-		if attacker ~= attacker2
-			and IsValid(attacker2)
-			and attacker2:IsPlayer()
-			and attacker2 ~= victim
-		then
+		if attacker ~= attacker2 and IsValid(attacker2) and attacker2:IsPlayer() and attacker2 ~= victim then
 			if IsValid(attacker) then
 				attacker.dp2_killstreak = prevks
 			end
@@ -163,96 +184,68 @@ hook.Add("PlayerDeath", "ttt_death_panel_PlayerDeath", function(victim, inflicto
 			attacker2.dp2_killstreak = (attacker2.dp2_killstreak or 0) + 1
 		end
 
-		if not IsValid(victim) then
-			return
-		end
-
+		if not IsValid(victim) then return end
 		victim.dp2_killinfo = nil
 
 		return playerdeath(victim, attacker2, killinfo)
 	end)
 end)
+
 local part2cpart = {
 	function(pos, ang, hitpos, hitbox)
 		local mins, maxs = hitbox[3], hitbox[4]
-
 		local fwd, rgt, up = ang:Forward(), ang:Right(), ang:Up()
-
 		fwd:Mul((mins[1] + maxs[1]) * 0.5)
 		fwd:Sub(maxs[2] * rgt)
 		fwd:Add((mins[3] + maxs[3]) * 0.5 * up)
-
 		pos:Add(fwd)
 		pos:Sub(hitpos)
 		pos:Normalize()
-
 		local dp = rgt:Dot(pos)
 
 		if dp < 0 then
 			up:Mul(math.abs(mins[3] - maxs[3]) * 0.5)
 			up:Add(math.abs(mins[2] - maxs[2]) * rgt)
 			up:Normalize()
-
-			if dp < rgt:Dot(up) * -0.95 then
-				return 2
-			end
+			if dp < rgt:Dot(up) * -0.95 then return 2 end
 		end
 
 		return 1
 	end,
-	3,
-	function(pos, ang, hitpos)
+	3, function(pos, ang, hitpos)
 		pos:Sub(hitpos)
 		pos:Normalize()
-
-		if ang:Right():Dot(pos) < 0 then
-			return 8
-		end
+		if ang:Right():Dot(pos) < 0 then return 8 end
 
 		return 7
 	end,
 	function(pos, ang, hitpos, hitbox)
 		local mins, maxs = hitbox[3], hitbox[4]
-
 		local fwd, rgt, up = ang:Forward(), ang:Right(), ang:Up()
-
 		local vec = (mins[1] + maxs[1]) * 0.5 * fwd
 		vec:Sub(mins[2] * rgt)
 		vec:Add((mins[3] + maxs[3]) * 0.5 * up)
-
 		pos:Add(vec)
-
 		local diff = pos - hitpos
 		diff:Normalize()
-
-		local len, wid, hgt =
-			math.abs(mins[1] - maxs[1]),
-			math.abs(mins[2] - maxs[2]),
-			math.abs(mins[3] - maxs[3])
+		local len, wid, hgt = math.abs(mins[1] - maxs[1]), math.abs(mins[2] - maxs[2]), math.abs(mins[3] - maxs[3])
 
 		if up:Dot(diff) < 0 then
 			local rad = wid / 5.2
-
 			local line = wid * 0.35 - rad
-
 			up:Mul(hgt * 0.5)
 			rgt:Mul(-line)
 			rgt:Add(up)
-
 			hitpos:Sub(pos)
-
 			local rgtup = rgt - up
 			local hitup = hitpos - up
 			local hitrgt = hitpos - rgt
-
 			local distsq
 
 			if hitup:Dot(rgtup) < 0.0001 then
 				hitpos:Add(up)
 				up:Mul(-1)
-
 				distsq = up:Cross(hitpos):LengthSqr() / (hgt * hgt * 0.25)
-
 				rad = rad * 1.15
 			elseif hitrgt:Dot(rgtup) < 0 then
 				distsq = rgtup:Cross(hitup):LengthSqr() / (line * line)
@@ -260,35 +253,21 @@ local part2cpart = {
 				distsq = hitrgt:LengthSqr()
 			end
 
-			if distsq < (rad * rad) then
-				return 5
-			end
+			if distsq < (rad * rad) then return 5 end
 		else
 			fwd:Mul(len * -0.5)
 			up:Mul(hgt * 0.5)
-
 			hitpos:Sub(pos)
 			hitpos:Add(fwd)
 			hitpos:Add(up)
-
 			fwd:Mul(2)
-
 			local distsq = fwd:Cross(hitpos):LengthSqr() / (len * len)
-
-			if distsq < wid * wid * 0.3 then
-				return 6
-			end
+			if distsq < wid * wid * 0.3 then return 6 end
 		end
 
 		return 4
 	end,
-	9,
-	10,
-	11,
-	12,
-	13,
-	14,
-	_hitgroups = {
+	9, 10, 11, 12, 13, 14, _hitgroups = {
 		[HITGROUP_HEAD] = 1,
 		[HITGROUP_CHEST] = 15,
 		[HITGROUP_STOMACH] = 4,
@@ -300,30 +279,24 @@ local part2cpart = {
 }
 
 local causerignore, causeralias, mdl2causer
+
 local function posttakedamagedeath(victim, attacker, dmginfo)
 	local weapon = util.WeaponFromDamage(dmginfo)
 	weapon = IsValid(weapon) and weapon
 	local inflictor = dmginfo:GetInflictor()
 	inflictor = IsValid(inflictor) and inflictor
 	local causer
-
 	local pushwep, pushed2death
 	local push = victim.was_pushed
-	if push
-		and push.att == attacker
-		and math.max(push.t or 0, push.hurt or 0) > CurTime() - 4
-	then
+
+	if push and push.att == attacker and math.max(push.t or 0, push.hurt or 0) > CurTime() - 4 then
 		pushwep = push.wep
 	end
 
 	if not weapon then
 		local igniteinfo = victim.dp2_igniteinfo
 
-		if igniteinfo
-			and attacker == igniteinfo.att
-			and inflictor == igniteinfo.infl
-			and dmginfo:IsDamageType(DMG_DIRECT)
-		then
+		if igniteinfo and attacker == igniteinfo.att and inflictor == igniteinfo.infl and dmginfo:IsDamageType(DMG_DIRECT) then
 			weapon = IsValid(igniteinfo.wep) and igniteinfo.wep
 		end
 	end
@@ -378,7 +351,6 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 				ttt_cse_proj = "vis_name",
 				ttt_decoy = "decoy_name",
 				ttt_physhammer = "weapon_ttt_phammer",
-
 				func_physbox = "prop_physics",
 				func_physbox_multiplayer = "prop_physics",
 				func_pushable = "prop_physics",
@@ -388,9 +360,7 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 				prop_physics_respawnable = "prop_physics",
 				prop_ragdoll = "prop_physics",
 				simple_physics_prop = "prop_physics",
-
 				_mdl_oildrum001_explosive = "_dp2_ebarrel",
-
 				_mdl_bed = "_dp2_bed",
 				_mdl_furniturebed001a = "_dp2_bedframe",
 				_mdl_pot01a = "_dp2_ketpot",
@@ -401,28 +371,24 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 				_mdl_axe = "_dp2_axe",
 				_mdl_paper_towels = "_dp2_tpaper",
 				_mdl_goldfish = "_dp2_golfdish",
-
 				_mdl_tnt = "_dp2_tnt",
 				_mdl_tnttimed = "_dp2_tnt",
 				_mdl_amp = "_dp2_amp",
-
 				_mdl_breenbust = "_dp2_bust",
 				_mdl_breenclock = "_dp2_clock",
 				_mdl_breenglobe = "_dp2_globe",
-
 				_mdl_hgibs = "_dp2_skull",
 				_mdl_hgibs_rib = "_dp2_rib",
 				_mdl_hgibs_scapula = "_dp2_scapula",
 				_mdl_hgibs_spine = "_dp2_spine",
-
 				_mdl_bowling_ball = "_dp2_bowlb",
 				_mdl_bowling_pin = "_dp2_bowlp",
 			}
 
 			local basegrenadefn = util.WeaponForClass("weapon_tttbasegrenade")
 			basegrenadefn = basegrenadefn and basegrenadefn.GetGrenadeName
-
 			local swep, grenadename
+
 			local function getgrenadename()
 				if swep.GetGrenadeName then
 					grenadename = swep:GetGrenadeName()
@@ -430,13 +396,9 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 			end
 
 			local function each(k, v)
-				if not v then
-					return
-				end
+				if not v then return end
 
-				if v.GetGrenadeName
-					and v.GetGrenadeName ~= basegrenadefn
-				then
+				if v.GetGrenadeName and v.GetGrenadeName ~= basegrenadefn then
 					swep = v
 					ProtectedCall(getgrenadename)
 
@@ -447,9 +409,7 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 					swep, grenadename = nil, nil
 				end
 
-				if not k then
-					return
-				end
+				if not k then return end
 
 				if isstring(v.AmmoType) then
 					causeralias[k] = "ammo_" .. v.AmmoType:lower()
@@ -459,6 +419,7 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 			for _, v in pairs(weapons.GetList()) do
 				each(v.ClassName or v.Classname, v)
 			end
+
 			for k, v in pairs(scripted_ents.GetList()) do
 				each(k, v.t)
 			end
@@ -471,7 +432,6 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 		end
 
 		causer = causeralias[causer] or causer
-
 		local mdl = causer == "prop_physics" and inflictor:GetModel()
 
 		if not mdl then
@@ -479,7 +439,6 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 		end
 
 		mdl = mdl:match("/([^/]+)%.mdl$") or mdl
-
 		local alias = causeralias["_mdl_" .. mdl]
 
 		if alias then
@@ -580,7 +539,8 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 			["tick-tack-toe_block"] = "_dp2_ticblock",
 		}
 
-		for k, v in pairs(mdl2causer) do -- prop kills are rare anyway
+		-- prop kills are rare anyway
+		for k, v in pairs(mdl2causer) do
 			if mdl:find(k, 1, true) then
 				causer = v
 				break
@@ -600,15 +560,12 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 			for i = 2, #lasthit do
 				local hinfo = lasthit[i]
 				local part = hinfo[1]
-
 				local vals = counts[part]
 
 				if vals then
 					vals[#vals + 1] = hinfo
 				else
-					counts[part] = {
-						hinfo,
-					}
+					counts[part] = {hinfo,}
 				end
 			end
 
@@ -618,9 +575,7 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 			for _, v in pairs(counts) do
 				local count = #v
 
-				if count > maxcount
-					or (count == maxcount and math.random(2) == 1)
-				then
+				if count > maxcount or (count == maxcount and math.random(2) == 1) then
 					mode = v
 					maxcount = count
 				end
@@ -637,10 +592,7 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 			local pos, ang = victim:GetBonePosition(lasthit[2])
 
 			if pos ~= victim:GetPos() then
-				cpart = cpart(
-					pos, ang, lasthit[3],
-					victim.dp2_hitboxes[lasthit[4] + 1]
-				) or 0
+				cpart = cpart(pos, ang, lasthit[3], victim.dp2_hitboxes[lasthit[4] + 1]) or 0
 			end
 		end
 
@@ -650,7 +602,6 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 	end
 
 	local killinfo = victim.dp2_killinfo
-
 	killinfo.attacker = attacker
 	killinfo.weapon = weapon
 	killinfo.inflictor = inflictor
@@ -662,43 +613,27 @@ local function posttakedamagedeath(victim, attacker, dmginfo)
 end
 
 hook.Add("PostEntityTakeDamage", "ttt_death_panel_PostEntityTakeDamage", function(victim, dmginfo)
-	if not victim:IsPlayer() then
-		return
-	end
-
+	if not victim:IsPlayer() then return end
 	local attacker = dmginfo:GetAttacker()
-	if IsValid(attacker)
-		and not attacker:IsWorld()
-		and not attacker:IsPlayer()
-	then -- attempt to salvage compatibility with shitty addons
-		local owner = attacker:GetOwner() or nil
 
-		attacker = owner
-			and IsValid(owner)
-			and owner:IsPlayer()
-			and owner
-			or attacker
+	if IsValid(attacker) and not attacker:IsWorld() and not attacker:IsPlayer() then
+		-- attempt to salvage compatibility with shitty addons
+		local owner = attacker:GetOwner() or nil
+		attacker = owner and IsValid(owner) and owner:IsPlayer() and owner or attacker
 	end
 
 	local hitter = attacker
+
 	if not (IsValid(attacker) and attacker:IsPlayer()) then
 		attacker = Entity(0)
 		hitter = dmginfo:GetDamageType()
-
 		local inflictor = dmginfo:GetInflictor()
-
-		local owner = inflictor
-			and IsValid(inflictor)
-			and inflictor:GetNWEntity("spec_owner", nil)
-			or nil
+		local owner = inflictor and IsValid(inflictor) and inflictor:GetNWEntity("spec_owner", nil) or nil
 
 		if owner and IsValid(owner) and owner:IsPlayer() then
 			local propspec = owner and owner.propspec or nil
 
-			if propspec
-				and propspec.t > 0
-				and CurTime() - propspec.t + 0.15 < 3
-			then
+			if propspec and propspec.t > 0 and CurTime() - propspec.t + 0.15 < 3 then
 				attacker = owner
 				hitter = attacker
 			end
@@ -706,15 +641,20 @@ hook.Add("PostEntityTakeDamage", "ttt_death_panel_PostEntityTakeDamage", functio
 	end
 
 	local damage = dmginfo:GetDamage()
+
 	if damage > 0 then
 		local hitters = victim.dp2_hits
+
 		if not hitters then
-			hitters = setmetatable({}, {__mode = "k"})
+			hitters = setmetatable({}, {
+				__mode = "k"
+			})
 
 			victim.dp2_hits = hitters
 		end
 
 		local hits = hitters[hitter]
+
 		if not hits then
 			hits = {0, 0}
 
@@ -726,21 +666,14 @@ hook.Add("PostEntityTakeDamage", "ttt_death_panel_PostEntityTakeDamage", functio
 	end
 
 	local igniteinfo = victim.ignite_info
-	if igniteinfo
-		and igniteinfo.att == attacker
-		and igniteinfo.infl == dmginfo:GetInflictor()
-		and not (
-			victim.dp2_igniteinfo
-			and igniteinfo == victim.dp2_igniteinfo.src
-		)
-	then
+
+	if igniteinfo and igniteinfo.att == attacker and igniteinfo.infl == dmginfo:GetInflictor() and not (victim.dp2_igniteinfo and igniteinfo == victim.dp2_igniteinfo.src) then
 		local infl = igniteinfo.infl
+
 		victim.dp2_igniteinfo = {
 			att = attacker,
 			infl = infl,
-			wep = util.WeaponFromDamage(dmginfo)
-				or infl ~= attacker and infl
-				or nil,
+			wep = util.WeaponFromDamage(dmginfo) or infl ~= attacker and infl or nil,
 			src = igniteinfo,
 		}
 	end
@@ -751,11 +684,9 @@ hook.Add("PostEntityTakeDamage", "ttt_death_panel_PostEntityTakeDamage", functio
 end)
 
 local bone2part, tracedata, vec
-hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(victim, dmginfo, dir, trace)
-	if not dmginfo:IsBulletDamage() then
-		return
-	end
 
+hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(victim, dmginfo, dir, trace)
+	if not dmginfo:IsBulletDamage() then return end
 	local hitboxes = victim.dp2_hitboxes
 
 	if not hitboxes then
@@ -782,18 +713,15 @@ hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(vict
 
 		local set = victim:GetHitboxSet()
 
-		hitboxes = {set = set}
+		hitboxes = {
+			set = set
+		}
 
 		for i = 1, victim:GetHitBoxCount(set) do
 			local bone = victim:GetHitBoxBone(i - 1, set)
-
 			local mins, maxs = victim:GetHitBoxBounds(i - 1, set)
 
-			hitboxes[i] = {
-				(bone + 1) or 0,
-				bone2part[victim:GetBoneName(bone)] or 0,
-				mins, maxs,
-			}
+			hitboxes[i] = {(bone + 1) or 0, bone2part[victim:GetBoneName(bone)] or 0, mins, maxs,}
 		end
 
 		victim.dp2_hitboxes = hitboxes
@@ -801,28 +729,20 @@ hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(vict
 
 	local traceres
 	::done::
+
 	if traceres then
 		local hitbox = hitboxes[traceres.HitBox + 1]
+		if not hitbox then return end
 
-		local hitinfo = {
-			hitbox[2],
-			hitbox[1] - 1,
-			traceres.HitPos,
-			traceres.HitBox,
-			traceres.HitGroup,
-		}
+		local hitinfo = {hitbox[2], hitbox[1] - 1, traceres.HitPos, traceres.HitBox, traceres.HitGroup,}
 
 		local lasthit = victim.dp2_lasthit
-
 		local tick = engine.TickCount()
 
 		if lasthit and lasthit[1] == tick then
 			lasthit[#lasthit + 1] = hitinfo
 		elseif not lasthit or #lasthit > 2 then
-			victim.dp2_lasthit = {
-				tick,
-				hitinfo,
-			}
+			victim.dp2_lasthit = {tick, hitinfo,}
 		else
 			lasthit[1] = tick
 			lasthit[2] = hitinfo
@@ -837,30 +757,29 @@ hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(vict
 	end
 
 	-- valve: // Half of the shotgun pellets are hulls that make it easier to hit targets with the shotgun.
-
 	local hitpos = trace.HitPos
-
 	local td = tracedata
+
 	if not td then
 		td = {
 			mask = CONTENTS_SOLID + CONTENTS_MONSTER + CONTENTS_HITBOX,
 			output = {},
 		}
+
 		tracedata = td
 	end
 
 	if not vec then
 		vec = Vector()
 	end
+
 	local vec = vec
 	vec:Set(dir)
 	vec:Mul(75)
 	vec:Add(hitpos)
-
 	td.start = hitpos
 	td.filter = dmginfo:GetAttacker()
 	td.endpos = vec
-
 	traceres = util.TraceLine(td)
 
 	if traceres.Entity == victim then
@@ -868,9 +787,7 @@ hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(vict
 	end
 
 	local vicorig = victim:GetPos()
-
 	local meanpos = (trace.StartPos + hitpos) * 0.5
-
 	local nearest
 	local nearest_dp = 0
 
@@ -881,7 +798,6 @@ hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(vict
 			vec:Set(meanpos)
 			vec:Sub(pos)
 			vec:Normalize()
-
 			local dp = dir:Dot(vec)
 
 			if dp < nearest_dp then
@@ -897,13 +813,10 @@ hook.Add("PlayerTraceAttack", "ttt_death_panel_PlayerTraceAttack", function(vict
 		vec:Normalize()
 		vec:Mul(32)
 		nearest:Sub(vec)
-
 		td.start = hitpos
 		td.endpos = nearest
 		td.ignoreworld = true
-
 		util.TraceLine(td)
-
 		td.ignoreworld = false
 
 		if traceres.Entity == victim then
